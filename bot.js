@@ -123,6 +123,20 @@ class MeetBot {
         console.warn(`[MeetBot] Erro ao enviar atalhos de mic/cam:`, err.message);
       }
 
+      // Garantir clicando nos botões de desligar microfone e câmera se ainda estiverem ativos
+      try {
+        const turnOffMic = await this.page.$('button[aria-label*="desativar microfone" i], button[aria-label*="turn off microphone" i]');
+        if (turnOffMic && await turnOffMic.isVisible()) {
+          await turnOffMic.click();
+          console.log('[MeetBot] Microfone desativado via clique no botão.');
+        }
+        const turnOffCam = await this.page.$('button[aria-label*="desativar câmera" i], button[aria-label*="turn off camera" i]');
+        if (turnOffCam && await turnOffCam.isVisible()) {
+          await turnOffCam.click();
+          console.log('[MeetBot] Câmera desativada via clique no botão.');
+        }
+      } catch (e) {}
+
       // PASSO 4: DETECÇÃO CRÍTICA DO GOOGLE MEET - Botão "Continuar como convidado"
       const guestButtonSelectors = [
         'button:has-text("Continuar como convidado")',
