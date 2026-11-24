@@ -128,15 +128,15 @@ class MeetBot {
         function renderVirtualCamera() {
           frame++;
 
-          // 1. Fundo escuro premium
-          ctx.fillStyle = '#0a0d14';
+          // 1. Fundo preto puro (integra 100% sem bordas com a imagem do robô)
+          ctx.fillStyle = '#000000';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
           // 2. Brilho radial suave ao redor do bot
           const grad = ctx.createRadialGradient(640, 360, 40, 640, 360, 420);
-          grad.addColorStop(0, 'rgba(56, 189, 248, 0.16)');
-          grad.addColorStop(0.7, 'rgba(30, 41, 59, 0.4)');
-          grad.addColorStop(1, 'rgba(10, 13, 20, 1)');
+          grad.addColorStop(0, 'rgba(56, 189, 248, 0.14)');
+          grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.4)');
+          grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
           ctx.fillStyle = grad;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -278,6 +278,25 @@ class MeetBot {
           console.log('[MeetBot] Microfone desativado via clique no botão.');
         }
       } catch (e) {}
+
+      // PASSO 4.5: Clicar em "Continuar como convidado" se exibido
+      const guestButtonSelectors = [
+        'button:has-text("Continuar como convidado")',
+        'button:has-text("Continue as a guest")',
+        'button:has-text("convidado")'
+      ];
+
+      for (const sel of guestButtonSelectors) {
+        try {
+          const guestBtn = await this.page.$(sel);
+          if (guestBtn && await guestBtn.isVisible()) {
+            console.log(`[MeetBot] Encontrado botão de convidado: "${sel}". Clicando...`);
+            await guestBtn.click();
+            await this.page.waitForTimeout(2000);
+            break;
+          }
+        } catch (e) {}
+      }
 
       // PASSO 5: Preencher nome do bot ("Kognite Bot") se campo de nome for solicitado
       const nameInputSelectors = [
