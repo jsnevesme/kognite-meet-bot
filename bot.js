@@ -58,6 +58,21 @@ class MeetBot {
         locale: 'pt-BR'
       });
 
+      // Carregar cookies de autenticação Google se configurados
+      if (process.env.GOOGLE_COOKIES) {
+        try {
+          const rawCookies = process.env.GOOGLE_COOKIES.trim();
+          const parsed = JSON.parse(rawCookies);
+          const cookiesArray = Array.isArray(parsed) ? parsed : (parsed.cookies || []);
+          if (cookiesArray.length > 0) {
+            await this.context.addCookies(cookiesArray);
+            console.log(`[MeetBot] ${cookiesArray.length} cookies de autenticação Google carregados com sucesso!`);
+          }
+        } catch (err) {
+          console.warn(`[MeetBot] Erro ao carregar cookies Google:`, err.message);
+        }
+      }
+
       this.page = await this.context.newPage();
 
       // Ocultar sinalizadores de automação
