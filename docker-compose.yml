@@ -13,9 +13,3 @@ services:
       - NODE_ENV=production
       - N8N_WEBHOOK_URL=https://n8n.kognite.io/webhook/meet-recording-finished
     shm_size: '1gb'
-    networks:
-      - dokploy-network
-
-networks:
-  dokploy-network:
-    external: true
