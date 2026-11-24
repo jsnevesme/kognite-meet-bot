@@ -1,8 +1,9 @@
 const express = require('express');
-const { MeetBot } = require('./bot');
+const { MeetBot, performGoogleLogin } = require('./bot');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+let loginSession = null;
 
 // Buffer de logs em memória para depuração remota
 const systemLogs = [];
@@ -139,6 +140,46 @@ app.post('/stop', async (req, res) => {
     success: true,
     message: `Gravação da reunião "${title}" finalizada com sucesso!`
   });
+});
+
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Informe email e password.' });
+  }
+  try {
+    if (loginSession && loginSession.browser) {
+      await loginSession.browser.close().catch(() => {});
+    }
+    loginSession = await performGoogleLogin(email, password);
+    res.json({
+      success: true,
+      url: loginSession.page.url(),
+      message: 'Login iniciado. Verifique /login/screenshot se precisar confirmar 2FA ou telefone.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/login/screenshot', async (req, res) => {
+  if (loginSession && loginSession.page && !loginSession.page.isClosed()) {
+    const buffer = await loginSession.page.screenshot({ type: 'png' });
+    res.contentType('image/png');
+    return res.send(buffer);
+  }
+  res.status(404).json({ error: 'Nenhuma sessão de login ativa.' });
+});
+
+app.post('/login/save', async (req, res) => {
+  if (loginSession && loginSession.context) {
+    await loginSession.context.storageState({ path: loginSession.statePath });
+    const url = loginSession.page.url();
+    await loginSession.browser.close().catch(() => {});
+    loginSession = null;
+    return res.json({ success: true, message: 'Sessão salva com sucesso!', url });
+  }
+  res.status(404).json({ error: 'Nenhuma sessão de login ativa.' });
 });
 
 const PORT = process.env.PORT || 3005;

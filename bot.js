@@ -57,12 +57,20 @@ class MeetBot {
       });
 
       console.log(`[MeetBot] Passo 2: Criando contexto do navegador com permissões de mídia...`);
-      this.context = await this.browser.newContext({
+      const statePath = path.join(__dirname, 'state.json');
+      const contextOptions = {
         permissions: ['microphone', 'camera'],
         userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
         viewport: { width: 1280, height: 720 },
         locale: 'pt-BR'
-      });
+      };
+
+      if (fs.existsSync(statePath)) {
+        contextOptions.storageState = statePath;
+        console.log(`[MeetBot] Sessão salva encontrada em state.json! Carregando autenticação...`);
+      }
+
+      this.context = await this.browser.newContext(contextOptions);
 
       // Carregar cookies de autenticação Google se configurados no ambiente
       if (process.env.GOOGLE_COOKIES) {
@@ -606,4 +614,58 @@ class MeetBot {
   }
 }
 
-module.exports = { MeetBot };
+async function performGoogleLogin(email, password) {
+  console.log(`[GoogleLogin] Iniciando login nativo no servidor para: ${email}`);
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--window-size=1280,720'
+    ]
+  });
+
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 720 },
+    locale: 'pt-BR'
+  });
+
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    window.chrome = { runtime: {} };
+  });
+
+  await page.goto('https://accounts.google.com/ServiceLogin?continue=https://meet.google.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForTimeout(2000);
+
+  // Preencher email
+  const emailInput = await page.$('input[type="email"]');
+  if (emailInput) {
+    await emailInput.fill(email);
+    await page.keyboard.press('Enter');
+    console.log(`[GoogleLogin] E-mail submetido.`);
+    await page.waitForTimeout(4000);
+  }
+
+  // Preencher senha
+  const pwdInput = await page.$('input[type="password"]');
+  if (pwdInput) {
+    await pwdInput.fill(password);
+    await page.keyboard.press('Enter');
+    console.log(`[GoogleLogin] Senha submetida. Aguardando redirecionamento ou confirmação...`);
+    await page.waitForTimeout(6000);
+  }
+
+  // Salvar estado se já autenticou ou retornar contexto para aguardar 2FA
+  const statePath = path.join(__dirname, 'state.json');
+  await context.storageState({ path: statePath });
+  console.log(`[GoogleLogin] Estado salvo em ${statePath}. URL atual: ${page.url()}`);
+
+  return { browser, context, page, statePath };
+}
+
+module.exports = { MeetBot, performGoogleLogin };
