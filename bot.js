@@ -302,8 +302,10 @@ class MeetBot {
       // PASSO 4.5: Clicar em "Continuar como convidado" se exibido
       const guestButtonSelectors = [
         'button:has-text("Continuar como convidado")',
+        'button:has-text("Continue as guest")',
         'button:has-text("Continue as a guest")',
-        'button:has-text("convidado")'
+        'button:has-text("convidado")',
+        'button:has-text("guest")'
       ];
 
       for (const sel of guestButtonSelectors) {
