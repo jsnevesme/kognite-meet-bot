@@ -122,110 +122,6 @@ class MeetBot {
         window.chrome = { runtime: {} };
       });
 
-      // INJETAR CÂMERA VIRTUAL ANIMADA (Kognite Bot ouvindo com fone e digitando no notebook)
-      await this.page.addInitScript(({ botName, avatarBase64 }) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1280;
-        canvas.height = 720;
-        const ctx = canvas.getContext('2d');
-
-        const img = new Image();
-        if (avatarBase64) {
-          img.src = 'data:image/jpeg;base64,' + avatarBase64;
-        }
-
-        let frame = 0;
-        function renderVirtualCamera() {
-          frame++;
-
-          // 1. Fundo preto puro (integra 100% sem bordas com a imagem do robô)
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          // 2. Brilho radial suave ao redor do bot
-          const grad = ctx.createRadialGradient(640, 360, 40, 640, 360, 420);
-          grad.addColorStop(0, 'rgba(56, 189, 248, 0.14)');
-          grad.addColorStop(0.7, 'rgba(0, 0, 0, 0.4)');
-          grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          // 3. Desenhar mascote fofo Kognite Bot (com suave efeito de flutuação/respiração)
-          if (img.complete && img.naturalWidth > 0) {
-            const size = 480;
-            const floatY = Math.sin(frame * 0.04) * 5;
-            ctx.drawImage(img, (1280 - size) / 2, (720 - size) / 2 - 25 + floatY, size, size);
-          }
-
-          // 4. Badge Superior: Status de Gravação Ativa
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.roundRect(40, 32, 270, 44, 22);
-          ctx.fill();
-          ctx.stroke();
-
-          // Ponto vermelho pulsante (Gravando)
-          const pulse = 0.5 + 0.5 * Math.sin(frame * 0.1);
-          ctx.fillStyle = `rgba(239, 68, 68, ${pulse})`;
-          ctx.beginPath();
-          ctx.arc(64, 54, 7, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.fillStyle = '#f8fafc';
-          ctx.font = 'bold 15px sans-serif';
-          ctx.fillText('GRAVANDO REUNIÃO', 82, 60);
-
-          // 5. Card Inferior: Escutando e gerando ata
-          const cardW = 620;
-          const cardX = (1280 - cardW) / 2;
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.roundRect(cardX, 600, cardW, 80, 20);
-          ctx.fill();
-          ctx.stroke();
-
-          // Barras animadas do equalizador (indicando que está escutando o áudio em tempo real)
-          const eqX = cardX + 30;
-          const eqY = 640;
-          for (let i = 0; i < 5; i++) {
-            const barH = 10 + 18 * Math.abs(Math.sin((frame * 0.12) + (i * 0.7)));
-            ctx.fillStyle = '#38bdf8';
-            ctx.fillRect(eqX + (i * 9), eqY - (barH / 2), 5, barH);
-          }
-
-          // Título do Bot
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 17px sans-serif';
-          ctx.fillText(`${botName} • Escutando tudo e gerando ata...`, eqX + 65, 634);
-
-          // Subtítulo com pontinhos digitando
-          const dots = '.'.repeat((Math.floor(frame / 18) % 3) + 1);
-          ctx.fillStyle = '#94a3b8';
-          ctx.font = '13px sans-serif';
-          ctx.fillText(`Registrando transcrição e ata executiva em tempo real${dots}`, eqX + 65, 658);
-
-          requestAnimationFrame(renderVirtualCamera);
-        }
-
-        renderVirtualCamera();
-
-        // Interceptar getUserMedia para fornecer o canvas animado como o feed de vídeo da webcam
-        const stream = canvas.captureStream(25);
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-          navigator.mediaDevices.getUserMedia = async (constraints) => {
-            if (constraints && constraints.video) {
-              return stream;
-            }
-            return origGUM(constraints);
-          };
-        }
-      }, { botName: this.botName, avatarBase64: this.avatarBase64 });
-
       // Expor função para capturar legendas em tempo real do DOM para o Node
       await this.page.exposeFunction('sendCaptionToNode', (speaker, text) => {
         if (!text || text.trim().length === 0) return;
@@ -271,14 +167,15 @@ class MeetBot {
         console.warn(`[MeetBot] Aviso ao dispensar popups:`, e.message);
       }
 
-      // PASSO 4: Microfone 100% MUTADO (Câmera permanece ligada transmitindo o Kognite Bot animado)
+      // PASSO 4: Microfone e Câmera 100% DESLIGADOS (apenas a foto de perfil do Kognite Bot visível)
       try {
         await this.page.keyboard.down('Control');
         await this.page.keyboard.press('d'); // Silenciar microfone
+        await this.page.keyboard.press('e'); // Desligar câmera
         await this.page.keyboard.up('Control');
-        console.log(`[MeetBot] Atalho Ctrl+D enviado para silenciar microfone.`);
+        console.log(`[MeetBot] Atalhos Ctrl+D e Ctrl+E enviados para desligar mic e câmera.`);
       } catch (err) {
-        console.warn(`[MeetBot] Erro ao enviar atalho de mic:`, err.message);
+        console.warn(`[MeetBot] Erro ao enviar atalhos de mic/cam:`, err.message);
       }
 
       try {
@@ -286,6 +183,11 @@ class MeetBot {
         if (turnOffMic && await turnOffMic.isVisible()) {
           await turnOffMic.click();
           console.log('[MeetBot] Microfone desativado via clique no botão.');
+        }
+        const turnOffCam = await this.page.$('button[aria-label*="desativar câmera" i], button[aria-label*="turn off camera" i]');
+        if (turnOffCam && await turnOffCam.isVisible()) {
+          await turnOffCam.click();
+          console.log('[MeetBot] Câmera desativada via clique no botão.');
         }
       } catch (e) {}
 
@@ -384,17 +286,23 @@ class MeetBot {
       this.state = 'in_call';
       console.log(`[MeetBot] >>> ADMITIDO NA SALA COM SUCESSO! Iniciando captura de áudio e legendas.`);
 
-      // 1. Ativar legendas fechadas (Closed Captions)
+      // 1. Ativar legendas fechadas (Closed Captions) por botão e atalho
       try {
-        await this.page.keyboard.press('c');
-        console.log(`[MeetBot] Tecla 'c' pressionada para ativar legendas.`);
+        const captionsBtn = await this.page.$('button[aria-label*="legendas" i], button[aria-label*="captions" i]');
+        if (captionsBtn && await captionsBtn.isVisible()) {
+          await captionsBtn.click();
+          console.log(`[MeetBot] Botão de legendas clicado.`);
+        } else {
+          await this.page.keyboard.press('c');
+          console.log(`[MeetBot] Tecla 'c' pressionada para ativar legendas.`);
+        }
       } catch (e) {}
 
       // 2. Injetar Capturador de Legendas DOM e Gravação de Áudio via MediaRecorder
-      await this.page.evaluate(() => {
+      await this.page.evaluate(async () => {
         // Observador de Legendas
         const observer = new MutationObserver(() => {
-          const captionNodes = document.querySelectorAll('div[jscontroller="D1tHje"], div[jsname="YSxPsd"], .iTTPOb');
+          const captionNodes = document.querySelectorAll('div[jscontroller="D1tHje"], div[jsname="YSxPsd"], .iTTPOb, [role="region"][aria-label*="Legendas" i], [role="region"][aria-label*="Captions" i]');
           captionNodes.forEach(node => {
             const speakerEl = node.querySelector('.zsMVvd, .jxFHg, [jsname="r4nke"]');
             const textEl = node.querySelector('.iTTPOb, [jsname="tgaKEf"]');
@@ -411,7 +319,18 @@ class MeetBot {
         // Inicializar MediaRecorder capturando os elementos <audio> remotos
         try {
           const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
           const destination = audioCtx.createMediaStreamDestination();
+
+          // Âncora silenciosa para garantir que a stream de áudio nunca pare de gravar
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          gain.gain.value = 0;
+          osc.connect(gain);
+          gain.connect(destination);
+          osc.start();
 
           const attachAudios = () => {
             document.querySelectorAll('audio').forEach(audio => {
@@ -455,6 +374,7 @@ class MeetBot {
   }
 
   async monitorMeetingStatus() {
+    let aloneSeconds = 0;
     const checkInterval = setInterval(async () => {
       if (this.isStopping || !this.isRunning) {
         clearInterval(checkInterval);
@@ -468,22 +388,43 @@ class MeetBot {
           return;
         }
 
-        // Verificar se a chamada foi encerrada
-        const isEnded = await this.page.evaluate(() => {
+        // Verificar se a chamada foi encerrada ou se o bot ficou sozinho na sala
+        const statusCheck = await this.page.evaluate(() => {
           const bodyText = document.body ? document.body.innerText : '';
-          return (
+          const ended = (
             bodyText.includes('Você saiu da reunião') ||
             bodyText.includes('Você foi removido') ||
             bodyText.includes('A reunião terminou') ||
             bodyText.includes('You left the meeting') ||
             bodyText.includes('Meeting ended')
           );
+
+          // Contar participantes no badge do Meet
+          let count = 2;
+          const countEl = document.querySelector('.uGOf1d');
+          if (countEl) {
+            const parsed = parseInt(countEl.innerText.trim(), 10);
+            if (!isNaN(parsed)) count = parsed;
+          }
+          return { ended, count };
         });
 
-        if (isEnded) {
-          console.log(`[MeetBot] Chamada encerrada pelos participantes ou pelo host.`);
+        if (statusCheck.ended) {
+          console.log(`[MeetBot] Chamada encerrada pelo anfitrião.`);
           clearInterval(checkInterval);
           await this.stop();
+          return;
+        }
+
+        if (statusCheck.count <= 1) {
+          aloneSeconds += 5;
+          if (aloneSeconds >= 15) {
+            console.log(`[MeetBot] Todos os outros participantes saíram (sala vazia por 15s). Encerrando gravação...`);
+            clearInterval(checkInterval);
+            await this.stop();
+          }
+        } else {
+          aloneSeconds = 0;
         }
       } catch (e) {
         clearInterval(checkInterval);
@@ -503,7 +444,7 @@ class MeetBot {
     let audioBase64 = null;
     let audioSize = 0;
 
-    // 1. Coletar áudio gravado da página antes de fechar o navegador
+    // 1. Coletar áudio gravado da página antes de fechar o navegador via FileReader
     try {
       if (this.page && !this.page.isClosed()) {
         audioBase64 = await this.page.evaluate(async () => {
@@ -512,16 +453,19 @@ class MeetBot {
           }
           if (window.kogniteRecorder.state !== 'inactive') {
             window.kogniteRecorder.stop();
+            await new Promise(r => setTimeout(r, 400));
           }
           const blob = new Blob(window.kogniteAudioChunks, { type: 'audio/webm' });
-          const buffer = await blob.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          let binary = '';
-          const len = bytes.byteLength;
-          for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          return window.btoa(binary);
+          return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const dataUrl = reader.result || '';
+              const base64 = dataUrl.split(',')[1] || null;
+              resolve(base64);
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
         });
 
         if (audioBase64) {
