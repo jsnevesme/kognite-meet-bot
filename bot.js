@@ -69,10 +69,35 @@ class MeetBot {
         try {
           const rawCookies = process.env.GOOGLE_COOKIES.trim();
           const parsed = JSON.parse(rawCookies);
-          const cookiesArray = Array.isArray(parsed) ? parsed : (parsed.cookies || []);
-          if (cookiesArray.length > 0) {
-            await this.context.addCookies(cookiesArray);
-            console.log(`[MeetBot] ${cookiesArray.length} cookies de autenticação Google carregados com sucesso!`);
+          const rawArray = Array.isArray(parsed) ? parsed : (parsed.cookies || []);
+          
+          const sanitizedCookies = rawArray.map(c => {
+            const cookie = {
+              name: c.name,
+              value: c.value,
+              domain: c.domain,
+              path: c.path || '/'
+            };
+            if (typeof c.httpOnly === 'boolean') cookie.httpOnly = c.httpOnly;
+            if (typeof c.secure === 'boolean') cookie.secure = c.secure;
+            if (c.expirationDate) cookie.expires = c.expirationDate;
+
+            if (c.sameSite) {
+              const ss = String(c.sameSite).toLowerCase();
+              if (ss === 'no_restriction' || ss === 'none') {
+                cookie.sameSite = 'None';
+              } else if (ss === 'lax') {
+                cookie.sameSite = 'Lax';
+              } else if (ss === 'strict') {
+                cookie.sameSite = 'Strict';
+              }
+            }
+            return cookie;
+          });
+
+          if (sanitizedCookies.length > 0) {
+            await this.context.addCookies(sanitizedCookies);
+            console.log(`[MeetBot] ${sanitizedCookies.length} cookies de autenticação Google carregados e sanitizados com sucesso!`);
           }
         } catch (err) {
           console.warn(`[MeetBot] Erro ao carregar cookies Google do env:`, err.message);
