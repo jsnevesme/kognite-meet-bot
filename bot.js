@@ -35,9 +35,9 @@ class MeetBot {
     console.log(`[MeetBot] >>> Iniciando bot "${this.botName}" para: ${this.meetingUrl} (Código: ${this.meetingCode})`);
 
     try {
-      console.log(`[MeetBot] Passo 1: Lançando Chromium como navegador desktop real (Xvfb)...`);
+      console.log(`[MeetBot] Passo 1: Lançando Chromium headless otimizado...`);
       this.browser = await chromium.launch({
-        headless: false, // Roda no display virtual Xvfb (sem assinaturas de headless)
+        headless: true,
         args: [
           '--use-fake-ui-for-media-stream',
           '--use-fake-device-for-media-stream',
@@ -45,6 +45,7 @@ class MeetBot {
           '--disable-blink-features=AutomationControlled',
           '--no-sandbox',
           '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
           '--window-size=1280,720'
         ]
       });
