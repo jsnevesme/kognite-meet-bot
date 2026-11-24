@@ -20,6 +20,10 @@ class MeetBot {
     this.wasAdmitted = false;
     this.state = 'initialized'; // initialized, launching, navigating, joining, in_call, completed, failed
     this.lastError = null;
+
+    // Extrair código da reunião (ex: jof-qhwm-ezz)
+    const match = (this.meetingUrl || '').match(/meet\.google\.com\/([a-z0-9-]+)/i);
+    this.meetingCode = match ? match[1] : '';
   }
 
   async start() {
@@ -28,12 +32,12 @@ class MeetBot {
     this.state = 'launching';
     this.startTime = new Date();
 
-    console.log(`[MeetBot] >>> Iniciando bot "${this.botName}" para: ${this.meetingUrl}`);
+    console.log(`[MeetBot] >>> Iniciando bot "${this.botName}" para: ${this.meetingUrl} (Código: ${this.meetingCode})`);
 
     try {
-      console.log(`[MeetBot] Passo 1: Lançando Chromium headless...`);
+      console.log(`[MeetBot] Passo 1: Lançando Chromium como navegador desktop real (Xvfb)...`);
       this.browser = await chromium.launch({
-        headless: true,
+        headless: false, // Roda no display virtual Xvfb (sem assinaturas de headless)
         args: [
           '--use-fake-ui-for-media-stream',
           '--use-fake-device-for-media-stream',
@@ -41,25 +45,21 @@ class MeetBot {
           '--disable-blink-features=AutomationControlled',
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu'
+          '--window-size=1280,720'
         ]
       });
 
       console.log(`[MeetBot] Passo 2: Criando contexto do navegador com permissões de mídia...`);
       this.context = await this.browser.newContext({
         permissions: ['microphone', 'camera'],
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
         viewport: { width: 1280, height: 720 },
         locale: 'pt-BR'
       });
 
       this.page = await this.context.newPage();
 
-      // Ocultar sinalizadores de automação para evitar bloqueio do Google
+      // Ocultar sinalizadores de automação
       await this.page.addInitScript(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         window.chrome = { runtime: {} };
@@ -84,9 +84,28 @@ class MeetBot {
       this.state = 'navigating';
       console.log(`[MeetBot] Passo 3: Navegando para o link da chamada: ${this.meetingUrl}`);
       await this.page.goto(this.meetingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      console.log(`[MeetBot] Página carregada com sucesso! URL atual: ${this.page.url()}`);
-
       await this.page.waitForTimeout(3000);
+      console.log(`[MeetBot] URL atual carregada: ${this.page.url()}`);
+
+      // TRATAMENTO DE REDIRECIONAMENTO PARA A HOME DO MEET
+      const currentUrl = this.page.url();
+      const isHome = currentUrl.replace(/\/$/, '') === 'https://meet.google.com' || currentUrl.includes('workspace.google.com');
+      if (isHome && this.meetingCode) {
+        console.log(`[MeetBot] Detectada landing page do Meet. Inserindo código "${this.meetingCode}" no campo da home...`);
+        try {
+          const codeInput = await this.page.$('input[placeholder*="código" i], input[aria-label*="código" i], input[type="text"]');
+          if (codeInput && await codeInput.isVisible()) {
+            await codeInput.fill(this.meetingCode);
+            await this.page.waitForTimeout(500);
+            await this.page.keyboard.press('Enter');
+            console.log(`[MeetBot] Código submetido via Enter. Aguardando tela da chamada...`);
+            await this.page.waitForTimeout(4000);
+            console.log(`[MeetBot] Nova URL após submeter código: ${this.page.url()}`);
+          }
+        } catch (e) {
+          console.warn(`[MeetBot] Erro ao inserir código na home:`, e.message);
+        }
+      }
 
       // Tratar possíveis popups de cookies ou termos do Google
       try {
@@ -112,7 +131,7 @@ class MeetBot {
         console.warn(`[MeetBot] Aviso ao dispensar popups:`, e.message);
       }
 
-      // Desativar microfone e câmera antes de entrar
+      // PASSO 4: Silenciar microfone e desligar câmera antes de entrar
       try {
         await this.page.keyboard.down('Control');
         await this.page.keyboard.press('d'); // Mute Mic
@@ -123,7 +142,6 @@ class MeetBot {
         console.warn(`[MeetBot] Erro ao enviar atalhos de mic/cam:`, err.message);
       }
 
-      // Garantir clicando nos botões de desligar microfone e câmera se ainda estiverem ativos
       try {
         const turnOffMic = await this.page.$('button[aria-label*="desativar microfone" i], button[aria-label*="turn off microphone" i]');
         if (turnOffMic && await turnOffMic.isVisible()) {
@@ -137,7 +155,7 @@ class MeetBot {
         }
       } catch (e) {}
 
-      // PASSO 4: DETECÇÃO CRÍTICA DO GOOGLE MEET - Botão "Continuar como convidado"
+      // PASSO 5: DETECÇÃO DO BOTÃO "Continuar como convidado"
       const guestButtonSelectors = [
         'button:has-text("Continuar como convidado")',
         'button:has-text("Continue as a guest")',
@@ -157,7 +175,7 @@ class MeetBot {
         } catch (e) {}
       }
 
-      // PASSO 5: Preencher nome do bot ("Thiago | Kognite AI")
+      // PASSO 6: Preencher nome do bot ("Thiago | Kognite AI")
       const nameInputSelectors = [
         'input[placeholder*="nome" i]',
         'input[aria-label*="nome" i]',
@@ -184,7 +202,7 @@ class MeetBot {
         console.log(`[MeetBot] Campo de nome não encontrado explicitamente. Prosseguindo...`);
       }
 
-      // PASSO 6: Clicar no botão "Pedir para participar" / "Participar agora"
+      // PASSO 7: Clicar no botão "Pedir para participar" / "Participar agora"
       this.state = 'joining';
       const joinSelectors = [
         'button:has-text("Pedir para participar")',
@@ -220,7 +238,7 @@ class MeetBot {
         } catch (e) {}
       }
 
-      console.log(`[MeetBot] Solicitação enviada! Aguardando o anfitrião clicar em "Permitir"...`);
+      console.log(`[MeetBot] Solicitação de entrada enviada! Aguardando o anfitrião clicar em "Permitir"...`);
 
       // Aguardar até estar dentro da sala (detectando a barra de controles inferior ou botão de sair)
       const inCallSelectors = [
