@@ -4,6 +4,34 @@ const { MeetBot } = require('./bot');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
+// Buffer de logs em memória para depuração remota
+const systemLogs = [];
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+function addLog(level, args) {
+  const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+  const time = new Date().toISOString();
+  systemLogs.push(`[${time}] [${level}] ${msg}`);
+  if (systemLogs.length > 300) systemLogs.shift();
+}
+
+console.log = (...args) => {
+  originalLog(...args);
+  addLog('INFO', args);
+};
+
+console.error = (...args) => {
+  originalError(...args);
+  addLog('ERROR', args);
+};
+
+console.warn = (...args) => {
+  originalWarn(...args);
+  addLog('WARN', args);
+};
+
 let currentBot = null;
 
 app.get('/health', (req, res) => {
@@ -15,9 +43,33 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/logs', (req, res) => {
+  res.json({
+    count: systemLogs.length,
+    logs: systemLogs
+  });
+});
+
+app.get('/screenshot', async (req, res) => {
+  if (currentBot && currentBot.page && !currentBot.page.isClosed()) {
+    try {
+      const buffer = await currentBot.page.screenshot({ type: 'png' });
+      res.contentType('image/png');
+      return res.send(buffer);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  res.status(404).json({ error: 'Nenhuma página do bot aberta no momento.' });
+});
+
 app.get('/status', (req, res) => {
   if (!currentBot || !currentBot.isRunning) {
-    return res.json({ active: false, message: 'Nenhuma gravação em andamento.' });
+    return res.json({
+      active: false,
+      message: 'Nenhuma gravação em andamento.',
+      lastLogs: systemLogs.slice(-10)
+    });
   }
 
   const durationSeconds = Math.round((new Date() - currentBot.startTime) / 1000);
@@ -50,6 +102,8 @@ app.post('/join', async (req, res) => {
     });
   }
 
+  console.log(`[Server] Recebida solicitação de entrada na reunião: ${targetUrl}`);
+
   const bot = new MeetBot({
     meetingUrl: targetUrl,
     title: title || 'Reunião Kognite',
@@ -61,7 +115,7 @@ app.post('/join', async (req, res) => {
 
   // Iniciar em background para responder à API imediatamente
   bot.start().catch(err => {
-    console.error('[Server] Erro na execução do bot:', err);
+    console.error('[Server] Erro fatal na execução do bot:', err.message, err.stack);
   });
 
   res.json({
@@ -91,6 +145,6 @@ const PORT = process.env.PORT || 3005;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`===============================================`);
   console.log(`🚀 Kognite Meet Bot rodando na porta ${PORT}`);
-  console.log(`• Webhook n8n padrão: ${process.env.N8N_WEBHOOK_URL || 'https://n8n.kognite.io/webhook/meet-recording-finished'}`);
+  console.log(`• Webhook n8n: ${process.env.N8N_WEBHOOK_URL || 'https://n8n.kognite.io/webhook/meet-recording-finished'}`);
   console.log(`===============================================`);
 });
