@@ -651,26 +651,17 @@ async function performGoogleLogin(email, password, onSessionReady) {
     console.log(`[GoogleLogin] Página de login carregada: ${page.url()}`);
 
     // Preencher email
-    const emailInput = await page.$('input[type="email"]');
-    if (emailInput) {
-      await emailInput.fill(email);
-      await page.keyboard.press('Enter');
-      console.log(`[GoogleLogin] E-mail submetido.`);
-      await page.waitForTimeout(4000);
-    } else {
-      console.warn(`[GoogleLogin] Campo de e-mail não encontrado.`);
-    }
+    const emailInput = await page.waitForSelector('input#identifierId, input[type="email"]', { state: 'visible', timeout: 15000 });
+    await emailInput.fill(email);
+    await page.keyboard.press('Enter');
+    console.log(`[GoogleLogin] E-mail submetido.`);
 
     // Preencher senha
-    const pwdInput = await page.$('input[type="password"]');
-    if (pwdInput) {
-      await pwdInput.fill(password);
-      await page.keyboard.press('Enter');
-      console.log(`[GoogleLogin] Senha submetida. Aguardando redirecionamento ou confirmação...`);
-      await page.waitForTimeout(6000);
-    } else {
-      console.warn(`[GoogleLogin] Campo de senha não encontrado. URL: ${page.url()}`);
-    }
+    const pwdInput = await page.waitForSelector('input[type="password"], input[name="Passwd"]', { state: 'visible', timeout: 15000 });
+    await pwdInput.fill(password);
+    await page.keyboard.press('Enter');
+    console.log(`[GoogleLogin] Senha submetida. Aguardando redirecionamento ou confirmação...`);
+    await page.waitForTimeout(6000);
 
     await context.storageState({ path: statePath });
     console.log(`[GoogleLogin] Estado salvo em ${statePath}. URL atual: ${page.url()}`);
