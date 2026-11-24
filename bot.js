@@ -614,58 +614,69 @@ class MeetBot {
   }
 }
 
-async function performGoogleLogin(email, password) {
+async function performGoogleLogin(email, password, onSessionReady) {
   console.log(`[GoogleLogin] Iniciando login nativo no servidor para: ${email}`);
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--window-size=1280,720'
-    ]
-  });
+  let browser = null;
+  try {
+    console.log(`[GoogleLogin] Passo 1: Abrindo Chromium...`);
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--window-size=1280,720'
+      ]
+    });
 
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-    viewport: { width: 1280, height: 720 },
-    locale: 'pt-BR'
-  });
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 720 },
+      locale: 'pt-BR'
+    });
 
-  const page = await context.newPage();
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    window.chrome = { runtime: {} };
-  });
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      window.chrome = { runtime: {} };
+    });
 
-  await page.goto('https://accounts.google.com/ServiceLogin?continue=https://meet.google.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForTimeout(2000);
+    const statePath = path.join(__dirname, 'state.json');
+    if (onSessionReady) onSessionReady({ browser, context, page, statePath });
 
-  // Preencher email
-  const emailInput = await page.$('input[type="email"]');
-  if (emailInput) {
-    await emailInput.fill(email);
-    await page.keyboard.press('Enter');
-    console.log(`[GoogleLogin] E-mail submetido.`);
-    await page.waitForTimeout(4000);
+    console.log(`[GoogleLogin] Passo 2: Navegando para accounts.google.com...`);
+    await page.goto('https://accounts.google.com/ServiceLogin?continue=https://meet.google.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForTimeout(3000);
+    console.log(`[GoogleLogin] Página de login carregada: ${page.url()}`);
+
+    // Preencher email
+    const emailInput = await page.$('input[type="email"]');
+    if (emailInput) {
+      await emailInput.fill(email);
+      await page.keyboard.press('Enter');
+      console.log(`[GoogleLogin] E-mail submetido.`);
+      await page.waitForTimeout(4000);
+    } else {
+      console.warn(`[GoogleLogin] Campo de e-mail não encontrado.`);
+    }
+
+    // Preencher senha
+    const pwdInput = await page.$('input[type="password"]');
+    if (pwdInput) {
+      await pwdInput.fill(password);
+      await page.keyboard.press('Enter');
+      console.log(`[GoogleLogin] Senha submetida. Aguardando redirecionamento ou confirmação...`);
+      await page.waitForTimeout(6000);
+    } else {
+      console.warn(`[GoogleLogin] Campo de senha não encontrado. URL: ${page.url()}`);
+    }
+
+    await context.storageState({ path: statePath });
+    console.log(`[GoogleLogin] Estado salvo em ${statePath}. URL atual: ${page.url()}`);
+  } catch (err) {
+    console.error(`[GoogleLogin Erro]:`, err.message);
   }
-
-  // Preencher senha
-  const pwdInput = await page.$('input[type="password"]');
-  if (pwdInput) {
-    await pwdInput.fill(password);
-    await page.keyboard.press('Enter');
-    console.log(`[GoogleLogin] Senha submetida. Aguardando redirecionamento ou confirmação...`);
-    await page.waitForTimeout(6000);
-  }
-
-  // Salvar estado se já autenticou ou retornar contexto para aguardar 2FA
-  const statePath = path.join(__dirname, 'state.json');
-  await context.storageState({ path: statePath });
-  console.log(`[GoogleLogin] Estado salvo em ${statePath}. URL atual: ${page.url()}`);
-
-  return { browser, context, page, statePath };
 }
 
 module.exports = { MeetBot, performGoogleLogin };

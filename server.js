@@ -151,11 +151,17 @@ app.post('/login', async (req, res) => {
     if (loginSession && loginSession.browser) {
       await loginSession.browser.close().catch(() => {});
     }
-    loginSession = await performGoogleLogin(email, password);
+    
+    // Iniciar login em background para responder imediatamente
+    performGoogleLogin(email, password, (sessionObj) => {
+      loginSession = sessionObj;
+    }).catch(err => {
+      console.error('[Server] Erro no login Google:', err.message);
+    });
+
     res.json({
       success: true,
-      url: loginSession.page.url(),
-      message: 'Login iniciado. Verifique /login/screenshot se precisar confirmar 2FA ou telefone.'
+      message: 'Login iniciado em background. Acompanhe via /logs e /login/screenshot.'
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
