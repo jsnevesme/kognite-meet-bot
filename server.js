@@ -177,6 +177,19 @@ app.get('/login/screenshot', async (req, res) => {
   res.status(404).json({ error: 'Nenhuma sessão de login ativa.' });
 });
 
+app.post('/cookies', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const cookies = req.body.cookies || req.body;
+  if (!Array.isArray(cookies)) {
+    return res.status(400).json({ error: 'Envie um array JSON de cookies válido.' });
+  }
+  const filePath = path.join(__dirname, 'cookies.json');
+  fs.writeFileSync(filePath, JSON.stringify(cookies, null, 2));
+  console.log(`[Server] ${cookies.length} cookies salvos diretamente em cookies.json!`);
+  res.json({ success: true, count: cookies.length, message: 'Cookies atualizados com sucesso!' });
+});
+
 app.post('/login/save', async (req, res) => {
   if (loginSession && loginSession.context) {
     await loginSession.context.storageState({ path: loginSession.statePath });

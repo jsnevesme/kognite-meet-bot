@@ -76,11 +76,19 @@ class MeetBot {
 
       this.context = await this.browser.newContext(contextOptions);
 
-      // Carregar cookies de autenticação Google se configurados no ambiente
-      if (process.env.GOOGLE_COOKIES) {
+      // Carregar cookies de autenticação Google (cookies.json ou GOOGLE_COOKIES env)
+      const cookiesFilePath = path.join(__dirname, 'cookies.json');
+      let rawCookiesSource = null;
+      if (fs.existsSync(cookiesFilePath)) {
+        rawCookiesSource = fs.readFileSync(cookiesFilePath, 'utf8');
+        console.log(`[MeetBot] Lendo cookies de autenticação do arquivo cookies.json...`);
+      } else if (process.env.GOOGLE_COOKIES) {
+        rawCookiesSource = process.env.GOOGLE_COOKIES.trim();
+      }
+
+      if (rawCookiesSource) {
         try {
-          const rawCookies = process.env.GOOGLE_COOKIES.trim();
-          const parsed = JSON.parse(rawCookies);
+          const parsed = JSON.parse(rawCookiesSource);
           const rawArray = Array.isArray(parsed) ? parsed : (parsed.cookies || []);
           
           const sanitizedCookies = rawArray.map(c => {
