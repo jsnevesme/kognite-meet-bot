@@ -1,9 +1,11 @@
 FROM mcr.microsoft.com/playwright:v1.49.1-jammy
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 WORKDIR /app
 
-# Instalar xvfb para rodar o Chromium como navegador desktop real em display virtual (elimina detecção de headless)
-RUN apt-get update && apt-get install -y xvfb && rm -rf /var/lib/apt/lists/*
+# Instalar xvfb de forma 100% não-interativa (elimina qualquer pausa em tzdata)
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb && rm -rf /var/lib/apt/lists/*
 
 # Copiar arquivos de dependências
 COPY package*.json ./

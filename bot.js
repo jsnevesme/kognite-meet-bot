@@ -180,8 +180,7 @@ class MeetBot {
         'input[placeholder*="nome" i]',
         'input[aria-label*="nome" i]',
         'input[placeholder*="name" i]',
-        'input[aria-label*="name" i]',
-        'input[type="text"]'
+        'input[aria-label*="name" i]'
       ];
 
       let nameFilled = false;
