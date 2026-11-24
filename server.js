@@ -190,6 +190,55 @@ app.post('/cookies', (req, res) => {
   res.json({ success: true, count: cookies.length, message: 'Cookies atualizados com sucesso!' });
 });
 
+const { spawn, execSync } = require('child_process');
+let setupProcesses = [];
+
+app.all('/setup-login', (req, res) => {
+  try {
+    // Limpar processos anteriores se existirem
+    setupProcesses.forEach(p => { try { p.kill('SIGKILL'); } catch (e) {} });
+    setupProcesses = [];
+    try { execSync('pkill -f "Xvfb :99" || true; pkill -f x11vnc || true; pkill -f websockify || true; pkill -f "/app/chrome-profile" || true'); } catch (e) {}
+
+    const xvfb = spawn('Xvfb', [':99', '-screen', '0', '1280x720x24'], { stdio: 'ignore' });
+    const vnc = spawn('x11vnc', ['-display', ':99', '-forever', '-nopw', '-rfbport', '5900', '-shared'], { stdio: 'ignore' });
+    const novnc = spawn('websockify', ['--web=/usr/share/novnc', '6080', 'localhost:5900'], { stdio: 'ignore' });
+    
+    setTimeout(() => {
+      const chrome = spawn('/opt/google/chrome/chrome', [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--user-data-dir=/app/chrome-profile',
+        '--window-size=1280,720',
+        '--window-position=0,0',
+        'https://accounts.google.com/ServiceLogin?continue=https://meet.google.com/'
+      ], {
+        env: { ...process.env, DISPLAY: ':99' },
+        stdio: 'ignore'
+      });
+      setupProcesses.push(chrome);
+    }, 1500);
+
+    setupProcesses.push(xvfb, vnc, novnc);
+    console.log('[Server] Navegador visual (noVNC) iniciado na porta 6080 para login único!');
+    res.json({
+      success: true,
+      url: 'http://179.66.138.137:6080/vnc.html?autoconnect=true',
+      message: 'Acesse a URL acima no seu navegador para fazer login no Google Chrome real da VPS.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.all('/stop-login', (req, res) => {
+  setupProcesses.forEach(p => { try { p.kill('SIGTERM'); } catch (e) {} });
+  setupProcesses = [];
+  try { execSync('pkill -f "/app/chrome-profile" || true; pkill -f websockify || true; pkill -f x11vnc || true; pkill -f "Xvfb :99" || true'); } catch (e) {}
+  console.log('[Server] Sessão visual de login encerrada. Perfil salvo em /app/chrome-profile!');
+  res.json({ success: true, message: 'Sessão de login encerrada e perfil persistente pronto para uso!' });
+});
+
 app.post('/login/save', async (req, res) => {
   if (loginSession && loginSession.context) {
     await loginSession.context.storageState({ path: loginSession.statePath });

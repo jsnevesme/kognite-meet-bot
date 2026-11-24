@@ -4,20 +4,31 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
+# Instalar dependências de sistema para login visual único (Xvfb + VNC + noVNC)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    x11vnc \
+    novnc \
+    websockify \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências + Google Chrome Oficial
+# Instalar dependências Node + Google Chrome Oficial
 RUN npm install --production && npx playwright install chrome
 
 # Copiar o restante da aplicação
 COPY . .
+
+# Criar pasta persistente do perfil do Chrome
+RUN mkdir -p /app/chrome-profile
 
 # Variáveis padrão
 ENV PORT=3005
 ENV NODE_ENV=production
 ENV N8N_WEBHOOK_URL=https://n8n.kognite.io/webhook/meet-recording-finished
 
-EXPOSE 3005
+EXPOSE 3005 6080
 
 CMD ["node", "server.js"]

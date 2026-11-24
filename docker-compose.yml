@@ -8,9 +8,14 @@ services:
     restart: unless-stopped
     ports:
       - "3005:3005"
+      - "6080:6080"
     environment:
       - PORT=3005
       - NODE_ENV=production
       - N8N_WEBHOOK_URL=https://n8n.kognite.io/webhook/meet-recording-finished
-      - GOOGLE_COOKIES=${GOOGLE_COOKIES:-}
+    volumes:
+      - chrome_profile:/app/chrome-profile
     shm_size: '1gb'
+
+volumes:
+  chrome_profile:

@@ -44,10 +44,15 @@ class MeetBot {
     console.log(`[MeetBot] >>> Iniciando "${this.botName}" para: ${this.meetingUrl} (Código: ${this.meetingCode})`);
 
     try {
-      console.log(`[MeetBot] Passo 1: Lançando Google Chrome Oficial + Stealth...`);
-      this.browser = await chromium.launch({
+      console.log(`[MeetBot] Passo 1: Lançando Google Chrome Oficial com Perfil Persistente (/app/chrome-profile)...`);
+      const profileDir = path.join(__dirname, 'chrome-profile');
+      this.context = await chromium.launchPersistentContext(profileDir, {
         channel: 'chrome',
         headless: true,
+        permissions: ['microphone', 'camera'],
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 720 },
+        locale: 'pt-BR',
         args: [
           '--use-fake-ui-for-media-stream',
           '--use-fake-device-for-media-stream',
@@ -59,22 +64,7 @@ class MeetBot {
           '--window-size=1280,720'
         ]
       });
-
-      console.log(`[MeetBot] Passo 2: Criando contexto do navegador com permissões de mídia...`);
-      const statePath = path.join(__dirname, 'state.json');
-      const contextOptions = {
-        permissions: ['microphone', 'camera'],
-        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 720 },
-        locale: 'pt-BR'
-      };
-
-      if (fs.existsSync(statePath)) {
-        contextOptions.storageState = statePath;
-        console.log(`[MeetBot] Sessão salva encontrada em state.json! Carregando autenticação...`);
-      }
-
-      this.context = await this.browser.newContext(contextOptions);
+      this.browser = this.context.browser();
 
       // Carregar cookies de autenticação Google (cookies.json ou GOOGLE_COOKIES env)
       const cookiesFilePath = path.join(__dirname, 'cookies.json');
@@ -124,7 +114,7 @@ class MeetBot {
         }
       }
 
-      this.page = await this.context.newPage();
+      this.page = this.context.pages()[0] || await this.context.newPage();
 
       // Ocultar sinalizadores de automação para evitar bloqueios
       await this.page.addInitScript(() => {
@@ -543,11 +533,14 @@ class MeetBot {
       console.warn(`[MeetBot] Erro ao extrair áudio da página:`, err.message);
     }
 
-    // 2. Fechar navegador
+    // 2. Fechar navegador e contexto persistente
     try {
-      if (this.browser) {
+      if (this.context) {
+        await this.context.close();
+        console.log(`[MeetBot] Contexto e navegador Chrome fechados.`);
+      } else if (this.browser) {
         await this.browser.close();
-        console.log(`[MeetBot] Navegador Chromium fechado.`);
+        console.log(`[MeetBot] Navegador Chrome fechado.`);
       }
     } catch (e) {}
 
