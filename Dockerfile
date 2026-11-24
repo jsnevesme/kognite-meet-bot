@@ -5,7 +5,7 @@ WORKDIR /app
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências sem instalar navegadores adicionais (já inclusos na imagem)
+# Instalar dependências fixadas
 RUN npm install --production
 
 # Copiar o restante da aplicação
