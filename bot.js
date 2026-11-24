@@ -1,4 +1,7 @@
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-extra');
+const stealth = require('puppeteer-extra-plugin-stealth')();
+chromium.use(stealth);
+
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
@@ -41,8 +44,9 @@ class MeetBot {
     console.log(`[MeetBot] >>> Iniciando "${this.botName}" para: ${this.meetingUrl} (Código: ${this.meetingCode})`);
 
     try {
-      console.log(`[MeetBot] Passo 1: Lançando Chromium otimizado...`);
+      console.log(`[MeetBot] Passo 1: Lançando Google Chrome Oficial + Stealth...`);
       this.browser = await chromium.launch({
+        channel: 'chrome',
         headless: true,
         args: [
           '--use-fake-ui-for-media-stream',
@@ -618,8 +622,9 @@ async function performGoogleLogin(email, password, onSessionReady) {
   console.log(`[GoogleLogin] Iniciando login nativo no servidor para: ${email}`);
   let browser = null;
   try {
-    console.log(`[GoogleLogin] Passo 1: Abrindo Chromium...`);
+    console.log(`[GoogleLogin] Passo 1: Abrindo Google Chrome Oficial + Stealth...`);
     browser = await chromium.launch({
+      channel: 'chrome',
       headless: true,
       args: [
         '--disable-blink-features=AutomationControlled',
