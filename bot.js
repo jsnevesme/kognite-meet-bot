@@ -17,6 +17,7 @@ class MeetBot {
     this.endTime = null;
     this.isRunning = false;
     this.isStopping = false;
+    this.wasAdmitted = false;
     this.state = 'initialized'; // initialized, launching, navigating, joining, in_call, completed, failed
     this.lastError = null;
   }
@@ -87,7 +88,7 @@ class MeetBot {
 
       await this.page.waitForTimeout(3000);
 
-      // Tratar possíveis popups de cookies ou permissões do Google
+      // Tratar possíveis popups de cookies ou termos do Google
       try {
         const dismissSelectors = [
           'button:has-text("Recusar tudo")',
@@ -111,7 +112,7 @@ class MeetBot {
         console.warn(`[MeetBot] Aviso ao dispensar popups:`, e.message);
       }
 
-      // Desativar microfone e câmera antes de entrar (por atalhos e cliques)
+      // Desativar microfone e câmera antes de entrar
       try {
         await this.page.keyboard.down('Control');
         await this.page.keyboard.press('d'); // Mute Mic
@@ -122,13 +123,33 @@ class MeetBot {
         console.warn(`[MeetBot] Erro ao enviar atalhos de mic/cam:`, err.message);
       }
 
-      // Preencher nome do bot ("Thiago | Kognite AI")
+      // PASSO 4: DETECÇÃO CRÍTICA DO GOOGLE MEET - Botão "Continuar como convidado"
+      const guestButtonSelectors = [
+        'button:has-text("Continuar como convidado")',
+        'button:has-text("Continue as a guest")',
+        'button[jsname*="guest" i]',
+        'button:has-text("convidado")'
+      ];
+
+      for (const sel of guestButtonSelectors) {
+        try {
+          const guestBtn = await this.page.$(sel);
+          if (guestBtn && await guestBtn.isVisible()) {
+            console.log(`[MeetBot] Encontrado botão de convidado: "${sel}". Clicando...`);
+            await guestBtn.click();
+            await this.page.waitForTimeout(2000);
+            break;
+          }
+        } catch (e) {}
+      }
+
+      // PASSO 5: Preencher nome do bot ("Thiago | Kognite AI")
       const nameInputSelectors = [
-        'input[type="text"]',
-        'input[aria-label*="nome" i]',
-        'input[aria-label*="name" i]',
         'input[placeholder*="nome" i]',
-        'input[placeholder*="name" i]'
+        'input[aria-label*="nome" i]',
+        'input[placeholder*="name" i]',
+        'input[aria-label*="name" i]',
+        'input[type="text"]'
       ];
 
       let nameFilled = false;
@@ -137,25 +158,24 @@ class MeetBot {
           const input = await this.page.$(sel);
           if (input && await input.isVisible()) {
             await input.fill(this.botName);
-            console.log(`[MeetBot] Nome preenchido com sucesso: "${this.botName}"`);
+            console.log(`[MeetBot] Nome preenchido no campo "${sel}": "${this.botName}"`);
             nameFilled = true;
+            await this.page.waitForTimeout(1000);
             break;
           }
         } catch (e) {}
       }
 
       if (!nameFilled) {
-        console.log(`[MeetBot] Campo de nome não encontrado explicitamente (pode já estar preenchido ou logado).`);
+        console.log(`[MeetBot] Campo de nome não encontrado explicitamente. Prosseguindo...`);
       }
 
-      await this.page.waitForTimeout(1500);
-
-      // Clicar no botão para entrar ou pedir para participar
+      // PASSO 6: Clicar no botão "Pedir para participar" / "Participar agora"
       this.state = 'joining';
       const joinSelectors = [
         'button:has-text("Pedir para participar")',
-        'button:has-text("Participar agora")',
         'button:has-text("Ask to join")',
+        'button:has-text("Participar agora")',
         'button:has-text("Join now")',
         'button[jsname="Qx7uuf"]',
         'button[jsname="CQylAd"]'
@@ -166,8 +186,13 @@ class MeetBot {
         try {
           const btn = await this.page.$(sel);
           if (btn && await btn.isVisible()) {
+            const isDisabled = await btn.getAttribute('disabled');
+            if (isDisabled !== null && isDisabled !== 'false') {
+              console.log(`[MeetBot] Botão ${sel} ainda desabilitado, aguardando 1s...`);
+              await this.page.waitForTimeout(1000);
+            }
             await btn.click();
-            console.log(`[MeetBot] Clicou no botão de entrada: ${sel}`);
+            console.log(`[MeetBot] Clicou com sucesso no botão de entrada: ${sel}`);
             clickedJoin = true;
             break;
           }
@@ -175,13 +200,13 @@ class MeetBot {
       }
 
       if (!clickedJoin) {
-        console.log(`[MeetBot] Tentando submeter via Enter...`);
+        console.log(`[MeetBot] Tentando submeter pedido de entrada via tecla Enter...`);
         try {
           await this.page.keyboard.press('Enter');
         } catch (e) {}
       }
 
-      console.log(`[MeetBot] Aguardando admissão na sala pelo anfitrião...`);
+      console.log(`[MeetBot] Solicitação enviada! Aguardando o anfitrião clicar em "Permitir"...`);
 
       // Aguardar até estar dentro da sala (detectando a barra de controles inferior ou botão de sair)
       const inCallSelectors = [
@@ -195,6 +220,7 @@ class MeetBot {
 
       await this.page.waitForSelector(inCallSelectors.join(','), { timeout: 180000 });
 
+      this.wasAdmitted = true;
       this.state = 'in_call';
       console.log(`[MeetBot] >>> ADMITIDO NA SALA COM SUCESSO! Iniciando captura.`);
 
@@ -364,12 +390,14 @@ class MeetBot {
     const durationMinutes = Math.round(durationSeconds / 60);
 
     console.log(`[MeetBot] Resumo da gravação:`);
+    console.log(`• Foi admitido na sala: ${this.wasAdmitted}`);
     console.log(`• Duração: ${durationMinutes} min (${durationSeconds}s)`);
     console.log(`• Participantes detectados: ${Array.from(this.speakersSet).join(', ') || 'Nenhum'}`);
     console.log(`• Linhas de transcrição: ${this.transcriptEntries.length}`);
 
-    // 4. Enviar payload para o webhook do n8n se tiver dados relevantes
-    if (this.transcriptEntries.length > 0 || audioBase64 || durationSeconds > 10) {
+    // 4. Enviar payload para o webhook do n8n SOMENTE se foi admitido e tiver dados gravados
+    const hasData = this.transcriptEntries.length > 0 || (audioBase64 && audioSize > 1024);
+    if (this.wasAdmitted && hasData) {
       await this.sendToN8n({
         title: this.title,
         meetingUrl: this.meetingUrl,
@@ -382,7 +410,7 @@ class MeetBot {
         audioBase64: audioBase64
       });
     } else {
-      console.log(`[MeetBot] Reunião muito curta ou sem dados gravados. Ignorando envio para n8n.`);
+      console.log(`[MeetBot] Reunião não admitida ou sem áudio/legendas capturadas. Envio para n8n ignorado.`);
     }
 
     this.isRunning = false;
