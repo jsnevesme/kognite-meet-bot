@@ -107,7 +107,7 @@ app.post('/join', async (req, res) => {
   const bot = new MeetBot({
     meetingUrl: targetUrl,
     title: title || 'Reunião Kognite',
-    botName: botName || 'Thiago | Kognite AI',
+    botName: botName || 'Kognite Bot',
     webhookUrl: webhookUrl || process.env.N8N_WEBHOOK_URL || 'https://n8n.kognite.io/webhook/meet-recording-finished'
   });
 
