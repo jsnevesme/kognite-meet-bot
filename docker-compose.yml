@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  meet-bot:
+    build: .
+    image: kognite-meet-bot:latest
+    container_name: kognite-meet-bot
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - N8N_WEBHOOK_URL=https://n8n.kognite.io/webhook/meet-recording-finished
+    shm_size: '1gb'
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
