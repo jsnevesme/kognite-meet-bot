@@ -399,12 +399,19 @@ class MeetBot {
             bodyText.includes('Meeting ended')
           );
 
-          // Contar participantes no badge do Meet
+          // Contar participantes usando múltiplos seletores (grade DOM + badge)
           let count = 2;
-          const countEl = document.querySelector('.uGOf1d');
-          if (countEl) {
-            const parsed = parseInt(countEl.innerText.trim(), 10);
-            if (!isNaN(parsed)) count = parsed;
+          const tiles = document.querySelectorAll('[data-participant-id], [data-requested-participant-id]');
+          if (tiles.length > 0) {
+            count = tiles.length;
+          }
+          const badge = document.querySelector('.uGOf1d, [aria-label*="Mostrar todos" i], [aria-label*="Show everyone" i]');
+          if (badge) {
+            const m = (badge.innerText || badge.getAttribute('aria-label') || '').match(/\d+/);
+            if (m) {
+              const num = parseInt(m[0], 10);
+              if (!isNaN(num)) count = Math.min(count, num);
+            }
           }
           return { ended, count };
         });
