@@ -4,12 +4,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Instalar dependências de sistema para login visual único (Xvfb + VNC + noVNC)
+# Instalar dependências de sistema para login visual único + ffmpeg para MP3
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     x11vnc \
     novnc \
     websockify \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar arquivos de dependências

@@ -591,10 +591,34 @@ class MeetBot {
         form.append('speakers', JSON.stringify(payload.speakers));
         form.append('transcript', payload.transcript);
 
-        const audioBuffer = Buffer.from(payload.audioBase64, 'base64');
-        form.append('file', audioBuffer, {
-          filename: `Reuniao_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`,
-          contentType: 'audio/webm'
+        const rawBuffer = Buffer.from(payload.audioBase64, 'base64');
+        let finalBuffer = rawBuffer;
+        let finalFilename = `Reuniao_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+        let finalContentType = 'audio/webm';
+
+        // Converter para MP3 via ffmpeg para máxima compatibilidade e qualidade
+        try {
+          const { execSync } = require('child_process');
+          const id = Date.now();
+          const tmpWebm = `/tmp/raw_${id}.webm`;
+          const tmpMp3 = `/tmp/audio_${id}.mp3`;
+          fs.writeFileSync(tmpWebm, rawBuffer);
+          execSync(`ffmpeg -y -i "${tmpWebm}" -vn -ar 44100 -ac 1 -b:a 128k "${tmpMp3}"`, { stdio: 'ignore' });
+          if (fs.existsSync(tmpMp3)) {
+            finalBuffer = fs.readFileSync(tmpMp3);
+            finalFilename = `Reuniao_${new Date().toISOString().replace(/[:.]/g, '-')}.mp3`;
+            finalContentType = 'audio/mpeg';
+            console.log(`[MeetBot] Áudio convertido para MP3 com sucesso! (${(finalBuffer.length / 1024).toFixed(1)} KB)`);
+          }
+          try { fs.unlinkSync(tmpWebm); } catch (e) {}
+          try { fs.unlinkSync(tmpMp3); } catch (e) {}
+        } catch (convErr) {
+          console.warn(`[MeetBot] Falha ao converter para MP3 (enviando WebM original):`, convErr.message);
+        }
+
+        form.append('file', finalBuffer, {
+          filename: finalFilename,
+          contentType: finalContentType
         });
 
         const res = await axios.post(this.webhookUrl, form, {
