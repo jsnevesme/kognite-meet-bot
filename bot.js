@@ -122,20 +122,35 @@ class MeetBot {
         window.chrome = { runtime: {} };
       });
 
-      // Expor função para capturar legendas em tempo real do DOM para o Node
+      // Expor função para capturar legendas em tempo real do DOM para o Node (com deduplicação inteligente)
       await this.page.exposeFunction('sendCaptionToNode', (speaker, text) => {
         if (!text || text.trim().length === 0) return;
-        const cleanSpeaker = speaker || 'Participante';
+        const cleanSpeaker = (speaker || 'Participante').trim();
+        const cleanText = text.trim();
+        if (cleanSpeaker.toLowerCase().includes('kognite bot')) return;
+
         const now = new Date();
         const timeStr = now.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         this.speakersSet.add(cleanSpeaker);
+
+        // Atualizar a última entrada se for o mesmo falante expandindo a frase
+        const last = this.transcriptEntries[this.transcriptEntries.length - 1];
+        if (last && last.speaker === cleanSpeaker && (now.getTime() - last.rawTime < 12000)) {
+          if (cleanText.startsWith(last.text.substring(0, 15)) || last.text.startsWith(cleanText.substring(0, 15))) {
+            last.text = cleanText;
+            last.rawTime = now.getTime();
+            return;
+          }
+        }
+
         this.transcriptEntries.push({
           timestamp: timeStr,
+          rawTime: now.getTime(),
           speaker: cleanSpeaker,
-          text: text.trim()
+          text: cleanText
         });
-        console.log(`[MeetBot Legenda] [${timeStr}] ${cleanSpeaker}: ${text.trim().substring(0, 60)}...`);
+        console.log(`[MeetBot Legenda] [${timeStr}] ${cleanSpeaker}: ${cleanText.substring(0, 60)}...`);
       });
 
       this.state = 'navigating';
@@ -286,13 +301,26 @@ class MeetBot {
       this.state = 'in_call';
       console.log(`[MeetBot] >>> ADMITIDO NA SALA COM SUCESSO! Iniciando captura de áudio e legendas.`);
 
-      // 1. Ativar legendas fechadas (Closed Captions) por botão e atalho
+      // 1. Ativar legendas fechadas (Closed Captions) com foco explícito no botão correto
       try {
-        const captionsBtn = await this.page.$('button[aria-label*="legendas" i], button[aria-label*="captions" i]');
-        if (captionsBtn && await captionsBtn.isVisible()) {
-          await captionsBtn.click();
-          console.log(`[MeetBot] Botão de legendas clicado.`);
-        } else {
+        await this.page.waitForTimeout(1500);
+        const capSelectors = [
+          'button:has-text("Ativar legendas")',
+          'button[aria-label*="Ativar legendas" i]',
+          'button[aria-label*="Turn on captions" i]',
+          'button[aria-label*="legendas" i]'
+        ];
+        let clickedCap = false;
+        for (const sel of capSelectors) {
+          const btn = await this.page.$(sel);
+          if (btn && await btn.isVisible()) {
+            await btn.click();
+            console.log(`[MeetBot] Legendas ativadas via botão: ${sel}`);
+            clickedCap = true;
+            break;
+          }
+        }
+        if (!clickedCap) {
           await this.page.keyboard.press('c');
           console.log(`[MeetBot] Tecla 'c' pressionada para ativar legendas.`);
         }
@@ -399,11 +427,19 @@ class MeetBot {
             bodyText.includes('Meeting ended')
           );
 
-          // Contar participantes usando múltiplos seletores (grade DOM + badge)
+          // Contar participantes e extrair nomes reais dos participantes na sala
           let count = 2;
+          const names = [];
           const tiles = document.querySelectorAll('[data-participant-id], [data-requested-participant-id]');
           if (tiles.length > 0) {
             count = tiles.length;
+            tiles.forEach(tile => {
+              const nameEl = tile.querySelector('[data-self-name], .zWGUib, .XEazBc, span[dir="auto"]');
+              const rawName = (nameEl ? nameEl.innerText : tile.getAttribute('data-self-name') || '').trim();
+              if (rawName && !rawName.toLowerCase().includes('kognite bot') && !rawName.toLowerCase().includes('você')) {
+                names.push(rawName.split('\n')[0].trim());
+              }
+            });
           }
           const badge = document.querySelector('.uGOf1d, [aria-label*="Mostrar todos" i], [aria-label*="Show everyone" i]');
           if (badge) {
@@ -413,8 +449,17 @@ class MeetBot {
               if (!isNaN(num)) count = Math.min(count, num);
             }
           }
-          return { ended, count };
+          return { ended, count, names };
         });
+
+        if (Array.isArray(statusCheck.names)) {
+          statusCheck.names.forEach(n => {
+            if (n && !this.speakersSet.has(n)) {
+              this.speakersSet.add(n);
+              console.log(`[MeetBot] Participante identificado na sala: ${n}`);
+            }
+          });
+        }
 
         if (statusCheck.ended) {
           console.log(`[MeetBot] Chamada encerrada pelo anfitrião.`);
